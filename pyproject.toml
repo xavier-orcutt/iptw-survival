@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A Python package for IPTW-based survival analysis with bootstrapped metrics and covariate balance diagnostics."
 readme = "README.md"
 requires-python = ">=3.13"
-license = {text = "MIT"}
+license = "MIT"
 classifiers = [
     "Development Status :: 3 - Alpha",  
     "Intended Audience :: Science/Research",
@@ -50,3 +50,7 @@ dependencies = [
 Homepage = "https://github.com/xavier-orcutt/IPTWSurvivalEstimator"
 Documentation = "https://github.com/xavier-orcutt/IPTWSurvivalEstimator#readme"
 "Bug Tracker" = "https://github.com/xavier-orcutt/IPTWSurvivalEstimator/issues"
+
+[tool.setuptools.packages.find]
+include = ["iptw_survival*"]
+exclude = ["tutorial", "myenv", "data"]
