@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: iptw-survival
-Version: 0.1.1
+Version: 0.1.2
 Summary: A Python package for IPTW-based survival analysis with bootstrapped metrics and covariate balance diagnostics.
 Author-email: Xavier Orcutt <xavierorcutt@gmail.com>
 License-Expression: MIT
@@ -54,7 +54,7 @@ pip install iptw-survival
 ## Quick Start
 
 ```python
-from iptw-survival import IPTWSurvivalEstimator
+from iptw_survival import IPTWSurvivalEstimator
 
 # Instantiate and fit model
 estimator = IPTWSurvivalEstimator()
