@@ -1,0 +1,9 @@
+
+.DS_Store
+tutorial_requirements.txt
+
+# Ignore virtual environment
+myenv/
+
+# Ignore data folder and all its contents
+data/
