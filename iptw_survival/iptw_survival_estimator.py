@@ -48,9 +48,9 @@ class IPTWSurvivalEstimator:
             cat_var: Optional[List[str]] = None, 
             cont_var: Optional[List[str]] = None, 
             binary_var: Optional[List[str]] = None,
-            stabilized: bool = False,
             lr_kwargs: Optional[dict] = None,
-            clip_bounds: Optional[Union[Tuple[float, float], List[float]]] = None) -> None:
+            clip_bounds: Optional[Union[Tuple[float, float], List[float]]] = None,
+            stabilized: bool = False) -> None:
         """
         Fit logistic regression model to calculate propensity scores for receipt of treatment. 
 
@@ -67,8 +67,6 @@ class IPTWSurvivalEstimator:
         binary_var : list of str, optional 
             Binary variables to be passed through without transformation. These must contain no missing values and should 
             have only two unique values (e.g., 0/1 or True/False).
-        stabilized : bool, default = False
-            If True, enables stabilized weights in the transform step.
         lr_kwargs : dict, optional
             Additional keyword arguments passed to sklearn's LogisticRegression. To ensure reproducibility when using 
             bootstrapped survival methods (e.g., .survival_metrics() or .km_confidence_intervals()), consider setting 
@@ -76,6 +74,8 @@ class IPTWSurvivalEstimator:
         clip_bounds : tuple of float or list of float, optional
             If provided, clip propensity scores to this (min, max) range. 
             Common choice is (0.01, 0.99) to reduce the influence of extreme values.
+        stabilized : bool, default = False
+            If True, enables stabilized weights in the transform step.
 
         Returns
         -------
