@@ -13,7 +13,7 @@
     - Restricted mean survival time (RMST)
     - Median survival
 
-> ⚠️ Standard variance estimates for survival curves can be biased when using IPTW, especially when weights are non-integer or extreme. To address this, `IPTWSurvivalEstimator` uses bootstrapping to provide robust confidence intervals for survival metrics.
+Standard variance estimates for survival curves can be biased when using IPTW, especially when weights are non-integer or extreme. To address this, `IPTWSurvivalEstimator` uses bootstrapping to provide robust confidence intervals for survival metrics.
 
 ## Installation 
 
