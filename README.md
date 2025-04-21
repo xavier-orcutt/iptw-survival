@@ -81,13 +81,14 @@ A full walkthrough using the Flatiron Health advanced urothelial cancer dataset 
 
 ## Requirements
 
+Built and tested in python 3.13
+
+Core dependencies: 
 - pandas
 - numpy
 - scikit-learn
 - lifelines
 - matplotlib
-
-See requirements.txt for full list of dependencies. 
 
 ## Contact
 
