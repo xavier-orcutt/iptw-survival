@@ -25,7 +25,7 @@ pip install iptw-survival
 ## Quick Start
 
 ```python
-from iptw-survival import IPTWSurvivalEstimator
+from iptw_survival import IPTWSurvivalEstimator
 
 # Instantiate and fit model
 estimator = IPTWSurvivalEstimator()
