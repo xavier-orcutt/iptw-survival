@@ -7,3 +7,7 @@ myenv/
 
 # Ignore data folder and all its contents
 data/
+
+# Notebook files 
+tutorial/preparing_data.ipynb
+*-checkpoint.ipynb
