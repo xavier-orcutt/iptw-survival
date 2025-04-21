@@ -58,7 +58,7 @@ import matplotlib.pyplot as plt
 
 plt.plot(km_df['time'], km_df['treatment_estimate'], label = 'Treatment')
 plt.fill_between(km_df['time'], km_df['treatment_lower_ci'], km_df['treatment_upper_ci'], alpha = 0.1)
-plt.xlabel('Time (days)')
+plt.xlabel('Time (months)')
 plt.ylabel('Survival probability')
 plt.legend()
 plt.title('IPTW-adjusted Kaplan-Meier Curve')
