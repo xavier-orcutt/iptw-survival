@@ -344,11 +344,13 @@ class IPTWSurvivalEstimator:
         ax.spines['right'].set_visible(False)
 
         yticks = ax.get_yticks()
+        ax.set_yticks(yticks)  # explicitly set the tick locations
         ax.set_yticklabels([f'{abs(int(tick))}' for tick in yticks])
 
         ax.legend(prop = {'size': 10})
 
         fig.tight_layout()
+        plt.close(fig)
         return fig
         
     def standardized_mean_differences(self,
@@ -518,11 +520,11 @@ class IPTWSurvivalEstimator:
             ax.spines['right'].set_visible(False)
 
             # Title legend
-            ax.set_title('Love Plot: Variable Balance', pad = 20, size = 18, weight = 'bold')
+            ax.set_title('Standardized Mean Difference Plot: Covariate Balance', pad = 20, size = 18, weight = 'bold')
             ax.legend(prop = {'size': 10})
 
             fig.tight_layout()
-            
+            plt.close(fig)
             return smd_results_df, fig
         
         else:
