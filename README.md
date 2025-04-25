@@ -1,4 +1,4 @@
-# IPTWSurvivalEstimator
+# iptw-survival
 
 `iptw-survival` is a Python package for calculating inverse probability of treatment weights (IPTW) and performing survival analysis using real-world data. It includes functionality for estimating stabilized weights, checking covariate balance, visualizing propensity scores, and calculating bootstrapped survival metrics.
 
