@@ -1,6 +1,6 @@
 # IPTWSurvivalEstimator
 
-`IPTWSurvivalEstimator` is a Python package for calculating inverse probability of treatment weights (IPTW) and performing survival analysis using real-world data. It includes functionality for estimating stabilized weights, checking covariate balance, visualizing propensity scores, and calculating bootstrapped survival metrics.
+`iptw-survival` is a Python package for calculating inverse probability of treatment weights (IPTW) and performing survival analysis using real-world data. It includes functionality for estimating stabilized weights, checking covariate balance, visualizing propensity scores, and calculating bootstrapped survival metrics.
 
 ## Features
 
@@ -13,7 +13,7 @@
     - Restricted mean survival time (RMST)
     - Median survival
 
-Standard variance estimates for survival curves can be biased when using IPTW, especially when weights are non-integer or extreme. To address this, `IPTWSurvivalEstimator` uses bootstrapping to provide robust confidence intervals for survival metrics.
+Standard variance estimates for survival curves can be biased when using IPTW, especially when weights are non-integer or extreme. To address this, `iptw-survival` uses bootstrapping to provide robust confidence intervals for survival metrics.
 
 ## Installation 
 
