@@ -41,6 +41,8 @@ class IPTWSurvivalEstimator:
         self.smd_results_ = None
         self.survival_metrics_ = None
         self.km_confidence_intervals_ = None
+        self.treat_km_ = None
+        self.control_km_ = None
 
     def fit(self, 
             df: pd.DataFrame, 
@@ -878,6 +880,9 @@ class IPTWSurvivalEstimator:
         This method requires that .fit() or .fit_transform() has been run prior to use. During each bootstrap iteration, weights 
         are recalculated using the variables provided in the original .fit() or .fit_transform() call. Recalculated weights respect 
         the `stabilized` and `clip_bounds` parameters from the initial .fit() or .fit_transform() call.
+
+        This method also stores the fitted treatment and control Kaplan-Meier models as `self.treat_km_` and `self.control_km_`, 
+        which can be accessed for plotting purposes (e.g., with lifelines' add_at_risk_counts() function).
         """
         # Input validation for df 
         if not isinstance(df, pd.DataFrame):
@@ -949,6 +954,10 @@ class IPTWSurvivalEstimator:
                 timeline = time,
                 weights = df.loc[control_mask, weight_col]
             )
+
+        # Store the original models
+        self.treat_km_ = treat_km
+        self.control_km_ = control_km
         
         # Extract survival probabilities directly
         treatment_est = treat_km.survival_function_['KM_estimate'].values
