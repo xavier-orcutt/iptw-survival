@@ -415,6 +415,7 @@ class IPTWSurvivalEstimator:
         smd_cont = []
         for var in self.cont_var:
             # Imput median for missing 
+            smd_df[var] = pd.to_numeric(smd_df[var], errors='coerce').astype('Float64')
             smd_df[var] = smd_df[var].fillna(smd_df[var].median())
 
             treat_mask = smd_df[self.treatment_col] == 1
