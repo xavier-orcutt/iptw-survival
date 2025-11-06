@@ -28,11 +28,14 @@ class IPTWSurvivalEstimator:
         self.treatment_col = None
         self.cat_var = []
         self.cont_var = []
-        self.binary_var = []
+        self.binary_var = []            # user + missing flags
+        self.user_binary_var_ = []      # user provided
+        self.missing_flag_var_ = []   
         self.all_var = []
         self.stabilized = False
         self.lr_kwargs = {}
         self.clip_bounds = None
+        self.use_missing_flags = True 
 
         self.propensity_score_col = 'propensity_score'
         self.propensity_scores_ = None
@@ -52,7 +55,8 @@ class IPTWSurvivalEstimator:
             binary_var: Optional[List[str]] = None,
             lr_kwargs: Optional[dict] = None,
             clip_bounds: Optional[Union[Tuple[float, float], List[float]]] = None,
-            stabilized: bool = False) -> None:
+            stabilized: bool = False,
+            use_missing_flags: bool = True) -> None:
         """
         Fit logistic regression model to calculate propensity scores for receipt of treatment. 
 
@@ -78,6 +82,9 @@ class IPTWSurvivalEstimator:
             Common choice is (0.01, 0.99) to reduce the influence of extreme values.
         stabilized : bool, default = False
             If True, enables stabilized weights in the transform step.
+        use_missing_flags : bool, default = True
+            If True, for every continuous variable in `cont_var` wiht a missing value, a binary missingness flag named `<col>_missing` is 
+            generated. 
 
         Returns
         -------
@@ -86,7 +93,7 @@ class IPTWSurvivalEstimator:
 
         Notes
         -----
-        This method only estimates propensity scores. Weights are calculated in .transform().
+        This method only estimates propensity scores. Call `.transform()` to compute IPTW.
         At least one of cat_var, cont_var, or binary_var must be provided.
         If user does not specify clipping, safety clipping with 1e-6 is ued to avoid extreme weights.
         """
@@ -177,16 +184,30 @@ class IPTWSurvivalEstimator:
         # Save config
         self.cat_var = cat_var or []
         self.cont_var = cont_var or []
-        self.binary_var = binary_var or []
-        self.all_var = self.cat_var + self.cont_var + self.binary_var
+        self.user_binary_var_ = binary_var or []
+        self.use_missing_flags = bool(use_missing_flags) 
         
+        df = df.copy()
+
+        self.missing_flag_var_ = []
+        if self.use_missing_flags: 
+            for col in self.cont_var:
+                if df[col].isna().any(): 
+                    flag = f"{col}_missing"
+                    df[flag] = df[col].isna().astype(int)
+                    self.missing_flag_var_.append(flag)
+
+        # Combined binary list = user binaries + generated flags
+        self.binary_var = self.user_binary_var_ + self.missing_flag_var_
+
+        # all_var now includes flags so SMDs will consider them
+        self.all_var = self.cat_var + self.cont_var + self.binary_var
+
         self.treatment_col = treatment_col
         self.stabilized = stabilized
         self.lr_kwargs = lr_kwargs or {}
         self.clip_bounds = clip_bounds
-        
-        df = df.copy()
-        
+
         # Build pipeline
         numeric_pipeline = Pipeline([
             ('imputer', SimpleImputer(strategy = 'median')),
@@ -199,9 +220,9 @@ class IPTWSurvivalEstimator:
 
         preprocessor = ColumnTransformer(
             transformers = [
-                ('num', numeric_pipeline, cont_var),
-                ('cat', categorical_pipeline, cat_var),
-                ('pass', 'passthrough', binary_var)],
+                ('num', numeric_pipeline, self.cont_var),
+                ('cat', categorical_pipeline, self.cat_var),
+                ('pass', 'passthrough', self.binary_var)],
                 remainder = 'drop'
         )
 
@@ -747,10 +768,11 @@ class IPTWSurvivalEstimator:
                 treatment_col = self.treatment_col,
                 cat_var = self.cat_var,
                 cont_var = self.cont_var,
-                binary_var = self.binary_var,
+                binary_var = self.user_binary_var_,
                 stabilized = self.stabilized,
                 lr_kwargs = self.lr_kwargs,
-                clip_bounds = self.clip_bounds
+                clip_bounds = self.clip_bounds,
+                use_missing_flags = self.use_missing_flags
             )
 
             # Kaplan-Meier models 
@@ -990,10 +1012,11 @@ class IPTWSurvivalEstimator:
                 treatment_col = self.treatment_col,
                 cat_var = self.cat_var,
                 cont_var = self.cont_var,
-                binary_var = self.binary_var,
+                binary_var = self.user_binary_var_,
                 stabilized = self.stabilized,
                 lr_kwargs = self.lr_kwargs,
-                clip_bounds = self.clip_bounds
+                clip_bounds = self.clip_bounds, 
+                use_missing_flags = self.use_missing_flags
             )
 
             # Kaplan-Meier models 
