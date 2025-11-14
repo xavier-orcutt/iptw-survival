@@ -11,3 +11,4 @@ data/
 # Notebook files 
 tutorial/preparing_data.ipynb
 *-checkpoint.ipynb
+tutorial/tutorial_overlap.ipynb
