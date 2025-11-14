@@ -1,19 +1,19 @@
 # iptw-survival
 
-`iptw-survival` is a Python package for calculating inverse probability of treatment weights (IPTW) and performing survival analysis using real-world data. It includes functionality for estimating stabilized weights, checking covariate balance, visualizing propensity scores, and calculating bootstrapped survival metrics.
+`iptw-survival` is a Python package for performing weight-based causal survival analysis. It includes functionality for estimating inverse probability of treatment weights (IPTW) and overlap weights (OW), visualizing propensity score overlap, assessing covariate balance, and computing bootstrapped survival metrics.
 
 ## Features
 
-- Calculate stabilized or unstabilized IPTW using logistic regression
+- Calculate IPTW and overlap weights using logistic regression
 - Visualize propensity score distributions for treatment groups
 - Assess covariate balance using standardized mean differences (SMD), including a Love plot
-- Generate a bootstrapped Kaplan-Meier survival summary DataFrame with point estimates and bootstrapped 95% confidence intervals (useful for plotting with your preferred visualization library)
-- Compute survival metrics -- all with bootstrapped 95% condience intervals -- including:
+- Generate bootstrapped Kaplan-Meier survival summaries with point estimates and 95% CIs
+- Compute survival metrics with bootstrapped 95% confidence intervals:
     - Probability of survival at fixed timepoints
     - Restricted mean survival time (RMST)
     - Median survival
 
-Standard variance estimates for survival curves can be biased when using IPTW, especially when weights are non-integer or extreme. To address this, `iptw-survival` uses bootstrapping to provide robust confidence intervals for survival metrics.
+Standard variance estimates for survival curves can be biased when using non-integer or extreme weights. To address this, `iptw-survival` uses bootstrap resampling to provide robust confidence intervals for all survival metrics.
 
 ## Installation 
 
