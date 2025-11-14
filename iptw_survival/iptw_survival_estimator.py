@@ -23,13 +23,51 @@ logging.basicConfig(
 )
 
 class IPTWSurvivalEstimator:
+    """
+    This class estimates propensity scores using logistic regression, computes inverse
+    probability of treatment weights (IPTWs), and applies those weights to
+    inverse-weighted Kaplan–Meier and restricted mean survival time (RMST) analyses.
+
+    It is designed for treatment–outcome comparisons in observational data,
+    emulating the structure of a randomized trial. 
+
+    The implementation includes:
+        - Automated preprocessing pipelines (imputation, scaling, one-hot encoding)
+        - Propensity score estimation via logistic regression
+        - Optional stabilized weights and score clipping
+        - Support for mirrored propensity score plots and Love plots
+        - IPTW-adjusted survival analyses with bootstrap confidence intervals
+
+    Methods
+    -------
+    fit(...)
+        Fit the propensity score model and store predicted probabilities.
+    transform()
+        Compute IPTW weights based on fitted propensity scores.
+    fit_transform(...)
+        Convenience wrapper for `.fit()` followed by `.transform()`.
+    propensity_score_plot(...)
+        Plot mirrored histograms of propensity score distributions by treatment arm.
+    standardized_mean_differences(...)
+        Calculate and optionally plot covariate balance (SMDs) before and after weighting.
+    survival_metrics(...)
+        Estimate IPTW-adjusted survival probabilities, RMST, and median survival
+        with bootstrapped 95% confidence intervals.
+    km_confidence_intervals(...)
+        Compute full Kaplan–Meier survival curves with bootstrapped confidence bands.
+
+    Notes
+    -----
+    - For improved stability when overlap is poor, consider using
+      `OverlapWeightSurvivalEstimator`.
+    """
     
     def __init__(self):
         self.treatment_col = None
         self.cat_var = []
         self.cont_var = []
-        self.binary_var = []            # user + missing flags
-        self.user_binary_var_ = []      # user provided
+        self.binary_var = []            
+        self.user_binary_var_ = []      
         self.missing_flag_var_ = []   
         self.all_var = []
         self.stabilized = False
@@ -249,7 +287,7 @@ class IPTWSurvivalEstimator:
     
     def transform(self) -> pd.DataFrame:
         """
-        Calculate inverse probability of treatment weights (IPTW) based on fitted propensity scores.
+        Calculate IPTW based on fitted propensity scores.
 
         Returns
         -------
@@ -263,7 +301,8 @@ class IPTWSurvivalEstimator:
         Notes
         -----
         Must call `.fit()` before calling `.transform()`.
-        Formula for IPTWFor treated patients: weight = 1 / propensity score
+        Formula for IPTW: 
+            - For treated patients: weight = 1 / propensity score
             - For control patients: weight = 1 / (1 - propensity score)
             - If stabilized = True, weights are multiplied by the marginal probability of treatment or control.
         """
@@ -300,10 +339,6 @@ class IPTWSurvivalEstimator:
         -------
         pd.DataFrame
             A DataFrame with 'propensity_score' and 'iptw' columns added.
-
-        Notes
-        -----
-        This is a convenience method equivalent to calling `.fit()` followed by `.transform()`.
         """
         self.fit(*args, **kwargs)
         return self.transform()
