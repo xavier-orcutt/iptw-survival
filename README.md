@@ -1,19 +1,17 @@
 # iptw-survival
 
-`iptw-survival` is a Python package for performing weight-based causal survival analysis. It includes functionality for estimating inverse probability of treatment weights (IPTW) and overlap weights (OW), visualizing propensity score overlap, assessing covariate balance, and computing bootstrapped survival metrics.
+`iptw-survival` is a Python package for performing weight-based causal survival analysis. It includes functionality for estimating inverse probability of treatment weights (IPTW) and overlap weights (OW), visualizing propensity score overlap, assessing covariate balance, and computing bootstrapped, non-parametric survival metrics derived from Kaplan–Meier estimators.
 
 ## Features
 
 - Calculate IPTW and overlap weights using logistic regression
 - Visualize propensity score distributions for treatment groups
-- Assess covariate balance using standardized mean differences (SMD), including a Love plot
-- Generate bootstrapped Kaplan-Meier survival summaries with point estimates and 95% CIs
-- Compute survival metrics with bootstrapped 95% confidence intervals:
+- Assess covariate balance using standardized mean differences, including Love plots
+- Generate weighted Kaplan-Meier survival summaries with point estimates and bootstrapped 95% CIs
+- Compute non-parametric survival metrics (no Cox modeling), including:
     - Probability of survival at fixed timepoints
     - Restricted mean survival time (RMST)
     - Median survival
-
-Standard variance estimates for survival curves can be biased when using non-integer or extreme weights. To address this, `iptw-survival` uses bootstrap resampling to provide robust confidence intervals for all survival metrics.
 
 ## Installation 
 
