@@ -24,6 +24,95 @@ logging.basicConfig(
     format = '%(asctime)s - %(levelname)s - %(message)s'  
 )
 
+def _bootstrap_iteration_survival_metrics(
+    iteration_idx: int,
+    df: pd.DataFrame,
+    rng_seed: int,
+    treatment_col: str,
+    cat_var: List[str],
+    cont_var: List[str],
+    binary_var: List[str],
+    stabilized: bool,
+    lr_kwargs: dict,
+    clip_bounds: Optional[Tuple],
+    use_missing_flags: bool,
+    duration_col: str,
+    event_col: str,
+    weight_col: str,
+    psurv_time_points: Optional[List],
+    rmst_time_points: Optional[List],
+    median_time: bool,
+    estimator_class) -> dict:
+    """
+    Single bootstrap iteration for survival_metrics - designed for parallel execution.
+    """
+    rng = np.random.default_rng(seed=rng_seed + iteration_idx)
+    indices = rng.choice(df.index, size=len(df), replace=True)
+    df_boot = df.loc[indices].reset_index(drop=True)
+    
+    estimator = estimator_class()
+    df_boot_weighted = estimator.fit_transform(
+        df_boot,
+        treatment_col=treatment_col,
+        cat_var=cat_var,
+        cont_var=cont_var,
+        binary_var=binary_var,
+        stabilized=stabilized,
+        lr_kwargs=lr_kwargs,
+        clip_bounds=clip_bounds,
+        use_missing_flags=use_missing_flags
+    )
+    
+    treat_km = KaplanMeierFitter()
+    control_km = KaplanMeierFitter()
+    
+    treat_mask = df_boot_weighted[treatment_col] == 1
+    control_mask = df_boot_weighted[treatment_col] == 0
+    
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=StatisticalWarning)
+        treat_km.fit(
+            durations=df_boot_weighted.loc[treat_mask, duration_col],
+            event_observed=df_boot_weighted.loc[treat_mask, event_col],
+            weights=df_boot_weighted.loc[treat_mask, weight_col]
+        )
+        control_km.fit(
+            durations=df_boot_weighted.loc[control_mask, duration_col],
+            event_observed=df_boot_weighted.loc[control_mask, event_col],
+            weights=df_boot_weighted.loc[control_mask, weight_col]
+        )
+    
+    results = {
+        'treatment': {'survival_prob': {}, 'rmst': {}, 'median': None},
+        'control': {'survival_prob': {}, 'rmst': {}, 'median': None},
+        'difference': {'survival_prob': {}, 'rmst': {}, 'median': None}
+    }
+    
+    if psurv_time_points is not None:
+        for t in psurv_time_points:
+            treat_surv = treat_km.predict(t)
+            control_surv = control_km.predict(t)
+            results['treatment']['survival_prob'][t] = treat_surv
+            results['control']['survival_prob'][t] = control_surv
+            results['difference']['survival_prob'][t] = treat_surv - control_surv
+    
+    if rmst_time_points is not None:
+        for t in rmst_time_points:
+            treat_rmst = restricted_mean_survival_time(treat_km, t=t)
+            control_rmst = restricted_mean_survival_time(control_km, t=t)
+            results['treatment']['rmst'][t] = treat_rmst
+            results['control']['rmst'][t] = control_rmst
+            results['difference']['rmst'][t] = treat_rmst - control_rmst
+    
+    if median_time:
+        treat_med = treat_km.median_survival_time_
+        control_med = control_km.median_survival_time_
+        results['treatment']['median'] = treat_med
+        results['control']['median'] = control_med
+        results['difference']['median'] = treat_med - control_med
+    
+    return results
+
 def _bootstrap_iteration_km_curves(
     iteration_idx: int,
     df: pd.DataFrame,
@@ -41,9 +130,9 @@ def _bootstrap_iteration_km_curves(
     weight_col: str,
     time: np.ndarray,
     estimator_class) -> Tuple[np.ndarray, np.ndarray]:
-    
-    """Single bootstrap iteration for km_confidence_intervals - designed for parallel execution."""
-
+    """
+    Single bootstrap iteration for km_confidence_intervals - designed for parallel execution.
+    """
     rng = np.random.default_rng(seed=rng_seed + iteration_idx)
     indices = rng.choice(df.index, size=len(df), replace=True)
     df_boot = df.loc[indices].reset_index(drop=True)
@@ -663,12 +752,15 @@ class IPTWSurvivalEstimator:
                          rmst_time_points: Optional[List[float]] = None,
                          median_time: Optional[bool] = False,
                          n_bootstrap: int = 1000,
-                         random_state: Optional[int] = None) -> dict:
-
+                         random_state: Optional[int] = None,
+                         n_jobs: int = -1,
+                         verbose: int = 0) -> dict:
         """
         Estimate survival metrics at discrete time points for treatment group, control group, 
         and their difference using IPTW-adjusted Kaplan-Meier analysis with bootstrapped 95% 
         confidence intervals.
+
+        This method uses parallel processing by default for faster computation.
 
         Parameters
         ----------
@@ -698,6 +790,13 @@ class IPTWSurvivalEstimator:
             use identical resamples and produce aligned results, pass the same integer to both methods.  
             To ensure complete reproducibility, also consider passing random_state to the logistic regression model via lr_kwargs 
             in .fit() or fit_transform() to fix propensity score estimation.
+        n_jobs : int, default=-1
+            Number of parallel jobs for bootstrap computation:
+            - -1: Use all available CPU cores (default, fastest)
+            - 1: Sequential execution (same as original implementation)
+            - n: Use n CPU cores
+        verbose : int, default=0
+            Verbosity level for progress tracking. 
 
         Returns
         -------
@@ -846,89 +945,91 @@ class IPTWSurvivalEstimator:
             estimate['control']['median'] = control_med
             estimate['difference']['median'] = treat_med - control_med
 
-        # Calculate bootstrapped 95% CIs
-        # Initialize empty disctionaries for bootstrapped results 
+        # Bootstrap confidence intervals
+        if random_state is None:
+            rng_seed = np.random.randint(0, 2**31)
+        else:
+            rng_seed = random_state
+        
+        # Use parallel or sequential execution based on n_jobs
+        if n_jobs == 1:
+            # Sequential execution 
+            bootstrap_results = []
+            for i in range(n_bootstrap):
+                result = _bootstrap_iteration_survival_metrics(
+                    i, 
+                    df, 
+                    rng_seed, 
+                    self.treatment_col, 
+                    self.cat_var, 
+                    self.cont_var,
+                    self.user_binary_var_, 
+                    self.stabilized, 
+                    self.lr_kwargs, 
+                    self.clip_bounds,
+                    self.use_missing_flags, 
+                    duration_col, 
+                    event_col, 
+                    weight_col,
+                    psurv_time_points, 
+                    rmst_time_points, 
+                    median_time, 
+                    self.__class__)
+                bootstrap_results.append(result)
+        else:
+            # Parallel execution
+            bootstrap_results = Parallel(n_jobs = n_jobs, verbose = verbose)(
+                delayed(_bootstrap_iteration_survival_metrics)(
+                    i, 
+                    df, 
+                    rng_seed, 
+                    self.treatment_col, 
+                    self.cat_var, 
+                    self.cont_var,
+                    self.user_binary_var_, 
+                    self.stabilized, 
+                    self.lr_kwargs, 
+                    self.clip_bounds,
+                    self.use_missing_flags, 
+                    duration_col, 
+                    event_col, 
+                    weight_col,
+                    psurv_time_points, 
+                    rmst_time_points, 
+                    median_time, 
+                    self.__class__)
+                for i in range(n_bootstrap)
+            )
+
+        # Aggregate bootstrap results
         boot_results = {
             'treatment': {'survival_prob': {}, 'rmst': {}, 'median': []},
             'control': {'survival_prob': {}, 'rmst': {}, 'median': []},
             'difference': {'survival_prob': {}, 'rmst': {}, 'median': []}
         }
-
-        # Loop over n_bootstrap
-        rng = np.random.default_rng(seed = random_state)
-        for i in range(n_bootstrap):
-            
-            # Sample with replacement using random indices
-            indices = rng.choice(df.index, size = len(df), replace = True)
-            df_boot = df.loc[indices].reset_index(drop = True)
-
-            # Recalculate weights using saved model spec
-            df_boot_weighted = self.fit_transform(
-                df_boot,
-                treatment_col = self.treatment_col,
-                cat_var = self.cat_var,
-                cont_var = self.cont_var,
-                binary_var = self.user_binary_var_,
-                stabilized = self.stabilized,
-                lr_kwargs = self.lr_kwargs,
-                clip_bounds = self.clip_bounds,
-                use_missing_flags = self.use_missing_flags
-            )
-
-            # Kaplan-Meier models 
-            treat_km = KaplanMeierFitter()
-            control_km = KaplanMeierFitter()
-
-            treat_mask = df_boot_weighted[self.treatment_col] == 1
-            control_mask = df_boot_weighted[self.treatment_col] == 0
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category = StatisticalWarning)
-                treat_km.fit(
-                    durations = df_boot_weighted.loc[treat_mask, duration_col],
-                    event_observed = df_boot_weighted.loc[treat_mask, event_col],
-                    weights = df_boot_weighted.loc[treat_mask, weight_col]
-                )
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category = StatisticalWarning)
-                control_km.fit(
-                    durations = df_boot_weighted.loc[control_mask, duration_col],
-                    event_observed = df_boot_weighted.loc[control_mask, event_col],
-                    weights = df_boot_weighted.loc[control_mask, weight_col]
-                )
-
-            # Calculate survival metrics
-            if psurv_time_points is not None:
-                for t in psurv_time_points:
-                    boot_results['treatment']['survival_prob'].setdefault(t, []).append(treat_km.predict(t))
-                    boot_results['control']['survival_prob'].setdefault(t, []).append(control_km.predict(t))
-                    boot_results['difference']['survival_prob'].setdefault(t, []).append(
-                        treat_km.predict(t) - control_km.predict(t)
-                    )
-
-            if rmst_time_points is not None:
-                for t in rmst_time_points:
-                    treat_rmst = restricted_mean_survival_time(treat_km, t=t)
-                    control_rmst = restricted_mean_survival_time(control_km, t=t)
-                    boot_results['treatment']['rmst'].setdefault(t, []).append(treat_rmst)
-                    boot_results['control']['rmst'].setdefault(t, []).append(control_rmst)
-                    boot_results['difference']['rmst'].setdefault(t, []).append(treat_rmst - control_rmst)
-
-            if median_time:
-                treat_med = treat_km.median_survival_time_
-                control_med = control_km.median_survival_time_
-                boot_results['treatment']['median'].append(treat_med)
-                boot_results['control']['median'].append(control_med)
-                boot_results['difference']['median'].append(treat_med - control_med)
-
-        # Get estimate plus lower 2.5%, and upper 97.5% of boot_results
+    
+        for result in bootstrap_results:
+            for group in ['treatment', 'control', 'difference']:
+                if psurv_time_points is not None:
+                    for t in psurv_time_points:
+                        boot_results[group]['survival_prob'].setdefault(t, []).append(
+                            result[group]['survival_prob'][t]
+                        )
+                if rmst_time_points is not None:
+                    for t in rmst_time_points:
+                        boot_results[group]['rmst'].setdefault(t, []).append(
+                            result[group]['rmst'][t]
+                        )
+                if median_time:
+                    boot_results[group]['median'].append(result[group]['median'])
+        
+        # Compute confidence intervals
         final_results = {
             'treatment': {'survival_prob': {}, 'rmst': {}, 'median': None},
             'control':   {'survival_prob': {}, 'rmst': {}, 'median': None},
             'difference':{'survival_prob': {}, 'rmst': {}, 'median': None}
         }
-
+    
         for group in ['treatment', 'control', 'difference']:
             if psurv_time_points is not None:
                 for t in psurv_time_points:
@@ -936,20 +1037,20 @@ class IPTWSurvivalEstimator:
                     lci = np.percentile(boot_results[group]['survival_prob'][t], 2.5)
                     uci = np.percentile(boot_results[group]['survival_prob'][t], 97.5)
                     final_results[group]['survival_prob'][t] = (float(est), float(lci), float(uci))
-
+            
             if rmst_time_points is not None:
                 for t in rmst_time_points:
                     est = estimate[group]['rmst'][t]
                     lci = np.percentile(boot_results[group]['rmst'][t], 2.5)
                     uci = np.percentile(boot_results[group]['rmst'][t], 97.5)
                     final_results[group]['rmst'][t] = (float(est), float(lci), float(uci))
-
+            
             if median_time:
                 est = estimate[group]['median']
                 lci = np.percentile(boot_results[group]['median'], 2.5)
                 uci = np.percentile(boot_results[group]['median'], 97.5)
                 final_results[group]['median'] = (float(est), float(lci), float(uci))
-        
+    
         self.survival_metrics_ = final_results
         return final_results
 
@@ -962,7 +1063,6 @@ class IPTWSurvivalEstimator:
                                 random_state: Optional[int] = None,
                                 n_jobs: int = -1,
                                 verbose: int = 0) -> pd.DataFrame:
-
         """
         Estimate IPTW-adjusted Kaplan-Meier survival curves with 95% confidence intervals at each 
         time point using bootstrap resampling.
@@ -1112,7 +1212,7 @@ class IPTWSurvivalEstimator:
 
         # Use parallel or sequential execution based on n_jobs
         if n_jobs == 1:
-            # Sequential execution (original behavior)
+            # Sequential execution
             bootstrap_results = []
             for i in range(n_bootstrap):
                 result = _bootstrap_iteration_km_curves(
