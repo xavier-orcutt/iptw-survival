@@ -7,7 +7,7 @@
 - Calculate IPTW and overlap weights using logistic regression
 - Visualize propensity score distributions for treatment groups
 - Assess covariate balance using standardized mean differences, including Love plots
-- Generate weighted Kaplan-Meier survival summaries with point estimates and bootstrapped 95% CIs
+- Generate weighted Kaplan-Meier survival summaries with point estimates and bootstrapped 95% CIs using parallel processing
 - Compute non-parametric survival metrics (no Cox modeling), including:
     - Probability of survival at fixed timepoints
     - Restricted mean survival time (RMST)
@@ -49,7 +49,8 @@ km_df = estimator.km_confidence_interval(df = iptw_df
                                          event_col='event', 
                                          duration_col = 'duration',
                                          n_bootstrap = 500
-                                         random_state = 42)
+                                         random_state = 42,
+                                         n_jobs = -1)
 
 # Use km_df to plot survival curves 
 import matplotlib.pyplot as plt
@@ -70,7 +71,8 @@ results = estimator.survival_metrics(df = iptw_df
                                      rmst_time_points = [12],
                                      median_time = True
                                      n_bootstrap = 500
-                                     random_state = 42)
+                                     random_state = 42,
+                                     n_jobs = -1)
 ```
 
 ## Example Tutorial
