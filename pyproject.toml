@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iptw-survival"
-version = "0.1.8"
+version = "0.1.9"
 description = "A Python package for IPTW-based survival analysis with bootstrapped metrics and covariate balance diagnostics."
 readme = "README.md"
 requires-python = ">=3.13"
