@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: iptw-survival
-Version: 0.1.8
+Version: 0.1.9
 Summary: A Python package for IPTW-based survival analysis with bootstrapped metrics and covariate balance diagnostics.
 Author-email: Xavier Orcutt <xavierorcutt@gmail.com>
 License-Expression: MIT
@@ -29,20 +29,18 @@ Dynamic: license-file
 
 # iptw-survival
 
-`iptw-survival` is a Python package for performing weight-based causal survival analysis. It includes functionality for estimating inverse probability of treatment weights (IPTW) and overlap weights (OW), visualizing propensity score overlap, assessing covariate balance, and computing bootstrapped survival metrics.
+`iptw-survival` is a Python package for performing weight-based causal survival analysis. It includes functionality for estimating inverse probability of treatment weights (IPTW) and overlap weights (OW), visualizing propensity score overlap, assessing covariate balance, and computing bootstrapped, non-parametric survival metrics derived from Kaplan–Meier estimators.
 
 ## Features
 
 - Calculate IPTW and overlap weights using logistic regression
 - Visualize propensity score distributions for treatment groups
-- Assess covariate balance using standardized mean differences (SMD), including a Love plot
-- Generate bootstrapped Kaplan-Meier survival summaries with point estimates and 95% CIs
-- Compute survival metrics with bootstrapped 95% confidence intervals:
+- Assess covariate balance using standardized mean differences, including Love plots
+- Generate weighted Kaplan-Meier survival summaries with point estimates and bootstrapped 95% CIs using parallel processing
+- Compute non-parametric survival metrics (no Cox modeling), including:
     - Probability of survival at fixed timepoints
     - Restricted mean survival time (RMST)
     - Median survival
-
-Standard variance estimates for survival curves can be biased when using non-integer or extreme weights. To address this, `iptw-survival` uses bootstrap resampling to provide robust confidence intervals for all survival metrics.
 
 ## Installation 
 
@@ -80,7 +78,8 @@ km_df = estimator.km_confidence_interval(df = iptw_df
                                          event_col='event', 
                                          duration_col = 'duration',
                                          n_bootstrap = 500
-                                         random_state = 42)
+                                         random_state = 42,
+                                         n_jobs = -1)
 
 # Use km_df to plot survival curves 
 import matplotlib.pyplot as plt
@@ -101,7 +100,8 @@ results = estimator.survival_metrics(df = iptw_df
                                      rmst_time_points = [12],
                                      median_time = True
                                      n_bootstrap = 500
-                                     random_state = 42)
+                                     random_state = 42,
+                                     n_jobs = -1)
 ```
 
 ## Example Tutorial
