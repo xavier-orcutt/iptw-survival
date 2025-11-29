@@ -15,12 +15,77 @@ from lifelines import KaplanMeierFitter
 from lifelines.utils import restricted_mean_survival_time, median_survival_times
 from lifelines.exceptions import StatisticalWarning
 
+from joblib import Parallel, delayed
+
 import warnings
 
 logging.basicConfig(
     level = logging.INFO,                                 
     format = '%(asctime)s - %(levelname)s - %(message)s'  
 )
+
+def _bootstrap_iteration_km_curves(
+    iteration_idx: int,
+    df: pd.DataFrame,
+    rng_seed: int,
+    treatment_col: str,
+    cat_var: List[str],
+    cont_var: List[str],
+    binary_var: List[str],
+    stabilized: bool,
+    lr_kwargs: dict,
+    clip_bounds: Optional[Tuple],
+    use_missing_flags: bool,
+    duration_col: str,
+    event_col: str,
+    weight_col: str,
+    time: np.ndarray,
+    estimator_class) -> Tuple[np.ndarray, np.ndarray]:
+    
+    """Single bootstrap iteration for km_confidence_intervals - designed for parallel execution."""
+
+    rng = np.random.default_rng(seed=rng_seed + iteration_idx)
+    indices = rng.choice(df.index, size=len(df), replace=True)
+    df_boot = df.loc[indices].reset_index(drop=True)
+    
+    estimator = estimator_class()
+    df_boot_weighted = estimator.fit_transform(
+        df_boot,
+        treatment_col=treatment_col,
+        cat_var=cat_var,
+        cont_var=cont_var,
+        binary_var=binary_var,
+        stabilized=stabilized,
+        lr_kwargs=lr_kwargs,
+        clip_bounds=clip_bounds,
+        use_missing_flags=use_missing_flags
+    )
+    
+    treat_km = KaplanMeierFitter()
+    control_km = KaplanMeierFitter()
+    
+    treat_mask = df_boot_weighted[treatment_col] == 1
+    control_mask = df_boot_weighted[treatment_col] == 0
+    
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=StatisticalWarning)
+        treat_km.fit(
+            durations=df_boot_weighted.loc[treat_mask, duration_col],
+            event_observed=df_boot_weighted.loc[treat_mask, event_col],
+            timeline=time,
+            weights=df_boot_weighted.loc[treat_mask, weight_col]
+        )
+        control_km.fit(
+            durations=df_boot_weighted.loc[control_mask, duration_col],
+            event_observed=df_boot_weighted.loc[control_mask, event_col],
+            timeline=time,
+            weights=df_boot_weighted.loc[control_mask, weight_col]
+        )
+    
+    treatment_surv = treat_km.survival_function_['KM_estimate'].values
+    control_surv = control_km.survival_function_['KM_estimate'].values
+    
+    return treatment_surv, control_surv
 
 class IPTWSurvivalEstimator:
     """
@@ -894,11 +959,15 @@ class IPTWSurvivalEstimator:
                                 event_col: str, 
                                 weight_col: str = 'iptw',
                                 n_bootstrap: int = 1000,
-                                random_state: Optional[int] = None) -> pd.DataFrame:
+                                random_state: Optional[int] = None,
+                                n_jobs: int = -1,
+                                verbose: int = 0) -> pd.DataFrame:
 
         """
         Estimate IPTW-adjusted Kaplan-Meier survival curves with 95% confidence intervals at each 
         time point using bootstrap resampling.
+
+        This method now uses parallel processing by default for faster computation.
 
         Parameters
         ----------
@@ -919,7 +988,14 @@ class IPTWSurvivalEstimator:
             Seed for reproducibility of bootstrap resampling. If you want .survival_metrics() and .km_confidence_intervals() to 
             use identical resamples and produce aligned results, pass the same integer to both methods.  
             To ensure complete reproducibility, also consider passing random_state to the logistic regression model via lr_kwargs 
-            in .fit() or fit_transform() to fix propensity score estimation. 
+            in .fit() or fit_transform() to fix propensity score estimation.
+        n_jobs : int, default=-1
+            Number of parallel jobs for bootstrap computation:
+            - -1: Use all available CPU cores (default, fastest)
+            - 1: Sequential execution (same as original implementation)
+            - n: Use n CPU cores
+        verbose : int, default=0
+            Verbosity level for progress tracking:
 
         Returns
         -------
@@ -1028,59 +1104,62 @@ class IPTWSurvivalEstimator:
             'control_estimate': control_est
         })
 
-        # Calculate bootstrapped 95% CIs
-        # Arrays to store survival probabilities for each bootstrap sample
-        treatment_boot = np.zeros((n_bootstrap, len(time)))
-        control_boot = np.zeros((n_bootstrap, len(time)))
+        # Bootstrap confidence intervals
+        if random_state is None:
+            rng_seed = np.random.randint(0, 2**31)
+        else:
+            rng_seed = random_state
 
-        # Loop over n_bootstrap
-        rng = np.random.default_rng(seed = random_state)
-        for i in range(n_bootstrap):
-            
-            # Sample with replacement using random indices
-            indices = rng.choice(df.index, size = len(df), replace = True)
-            df_boot = df.loc[indices].reset_index(drop = True)
-
-            # Recalculate weights using saved model spec
-            df_boot_weighted = self.fit_transform(
-                df_boot,
-                treatment_col = self.treatment_col,
-                cat_var = self.cat_var,
-                cont_var = self.cont_var,
-                binary_var = self.user_binary_var_,
-                stabilized = self.stabilized,
-                lr_kwargs = self.lr_kwargs,
-                clip_bounds = self.clip_bounds, 
-                use_missing_flags = self.use_missing_flags
+        # Use parallel or sequential execution based on n_jobs
+        if n_jobs == 1:
+            # Sequential execution (original behavior)
+            bootstrap_results = []
+            for i in range(n_bootstrap):
+                result = _bootstrap_iteration_km_curves(
+                    i, 
+                    df, 
+                    rng_seed, 
+                    self.treatment_col, 
+                    self.cat_var, 
+                    self.cont_var,
+                    self.user_binary_var_, 
+                    self.stabilized, 
+                    self.lr_kwargs, 
+                    self.clip_bounds,
+                    self.use_missing_flags, 
+                    duration_col, 
+                    event_col, 
+                    weight_col, 
+                    time, 
+                    self.__class__)
+                bootstrap_results.append(result)
+        else:
+            # Parallel execution
+            bootstrap_results = Parallel(n_jobs = n_jobs, verbose = verbose)(
+                delayed(_bootstrap_iteration_km_curves)(
+                    i, 
+                    df, 
+                    rng_seed, 
+                    self.treatment_col, 
+                    self.cat_var, 
+                    self.cont_var,
+                    self.user_binary_var_, 
+                    self.stabilized, 
+                    self.lr_kwargs, 
+                    self.clip_bounds,
+                    self.use_missing_flags, 
+                    duration_col, 
+                    event_col, 
+                    weight_col, 
+                    time, 
+                    self.__class__
+                )
+                for i in range(n_bootstrap)
             )
 
-            # Kaplan-Meier models 
-            treat_km = KaplanMeierFitter()
-            control_km = KaplanMeierFitter()
-
-            treat_mask = df_boot_weighted[self.treatment_col] == 1
-            control_mask = df_boot_weighted[self.treatment_col] == 0
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category = StatisticalWarning)
-                treat_km.fit(
-                    durations = df_boot_weighted.loc[treat_mask, duration_col],
-                    event_observed = df_boot_weighted.loc[treat_mask, event_col],
-                    timeline = time,
-                    weights = df_boot_weighted.loc[treat_mask, weight_col]
-                )
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category = StatisticalWarning)
-                control_km.fit(
-                    durations = df_boot_weighted.loc[control_mask, duration_col],
-                    event_observed = df_boot_weighted.loc[control_mask, event_col],
-                    timeline = time,
-                    weights = df_boot_weighted.loc[control_mask, weight_col]
-                )
-            
-            treatment_boot[i, :] = treat_km.survival_function_['KM_estimate'].values
-            control_boot[i, :] = control_km.survival_function_['KM_estimate'].values
+        # Separate treatment and control results
+        treatment_boot = np.array([result[0] for result in bootstrap_results])
+        control_boot = np.array([result[1] for result in bootstrap_results])
 
         boot_df = pd.DataFrame({
             'time': time,
